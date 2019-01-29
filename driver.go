@@ -6,11 +6,11 @@ import (
 
 type dynamo struct {
 	dynamodbiface.DynamoDBAPI
-	mock *dynamock
+	mock *Dynamock
 }
 
-func New() (dynamodbiface.DynamoDBAPI, *dynamock) {
+func New() (dynamodbiface.DynamoDBAPI, *Dynamock) {
 	db = new(dynamo)
-	db.mock = new(dynamock)
-	return db, db.mock
+	db.mock = new(Dynamock)
+	return db, &db.mock
 }
