@@ -10,7 +10,7 @@ type dynamo struct {
 }
 
 func New() (dynamodbiface.DynamoDBAPI, *Dynamock) {
-	db = new(dynamo)
+	db := new(dynamo)
 	db.mock = new(Dynamock)
-	return db, &db.mock
+	return db, db.mock
 }

@@ -3,18 +3,17 @@ package dynamock
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
 type ExpectedPutItemRequest struct {
-	requestExpectation
-	complete bool
-	err      error
-	table    string
-	items map[string]dynamodb.AttributeValue
+	expectation
+	err                 error
+	table               string
+	items               map[string]dynamodb.AttributeValue
 	conditionExpression *string
-	output   dynamodb.GetItemOutput
+	ignoreFields        []string
+	output              dynamodb.PutItemOutput
 }
 
 func (e *ExpectedPutItemRequest) WithItems(items map[string]dynamodb.AttributeValue) *ExpectedPutItemRequest {
@@ -26,60 +25,46 @@ func (e *ExpectedPutItemRequest) WithConditionExpression(expression *string) *Ex
 	e.conditionExpression = expression
 	return e
 }
- 
-func (e *ExpectedPutItemRequest) WithOutput(output dynamodb.GetItemOutput) *ExpectedPutItemRequest {
+
+func (e *ExpectedPutItemRequest) WithOutput(output dynamodb.PutItemOutput) *ExpectedPutItemRequest {
 	e.output = output
 	return e
 }
 
 func (e *dynamo) PutItemRequest(input *dynamodb.PutItemInput) dynamodb.PutItemRequest {
 	mock := dynamodb.PutItemRequest{
-		&aws.Request{
-			Data:  nil,
-			Error: nil,
-		},
 		Input: input,
 	}
 
-	for index, request := range e.mock.requests {
-		if err := comparePutItemRequests(request, input); err == nil {
-			e.mock.requests[index].complete = true
-			mock.Request.Data = request.output
-			return mock
-		}
-
-		if !e.mock.ordered {
-			continue
-		} else {
-			e.mock.errors = append(e.mock.errors, fmt.Errorf("Expected %+v\n but found PutItemRequest %+v", request, input))
-			return mock
-		}
+	output := e.matchExpectation(*input, comparePutItemRequests)
+	if output != nil {
+		mock.Data = output
 	}
 
-	e.mock.errors = append(e.mock.errors, fmt.Errorf("Unexpected PutItemRequest %+v\n", input))
 	return mock
 }
 
-func comparePutItemRequests(expected ExpectedPutItemRequest, actual dynamodb.PutItemInput) error {
-	if putItemRequest, ok := request.(*ExpectedPutItemRequest); ok {
-		if putItemRequest.table != actual.TableName {
-			return fmt.Errorf("Expected PutItemRequest table %s but found %s", putItemRequest.table, actual.TableName)
+func comparePutItemRequests(expected expectation, input interface{}) (error, interface{}) {
+	actual := input.(dynamodb.PutItemInput)
+	if putItemRequest, ok := expected.(ExpectedPutItemRequest); ok {
+		if putItemRequest.table != *actual.TableName {
+			return fmt.Errorf("expected PutItemRequest table %s but found %s", putItemRequest.table, actual.TableName), nil
 		}
 
 		if putItemRequest.conditionExpression != nil {
-			if *putItemRequest.conditionExpression != *actual.ConditionExpression {
-				return fmt.Errorf("Expected PutItemRequest ConditionExpression %s but found %s", *putitemRequest.conditionExpression, *actual.ConditionExpression)
+			if escapeSequences.Replace(*putItemRequest.conditionExpression) != escapeSequences.Replace(*actual.ConditionExpression) {
+				return fmt.Errorf("expected PutItemRequest ConditionExpression %s but found %s", *putItemRequest.conditionExpression, *actual.ConditionExpression), nil
 			}
 		}
 
 		if putItemRequest.items != nil {
-			if err, ok := DeepEqualAttributeValues(putItemRequest.items, actual.Items); !ok {
-				return err
+			if err, ok := DeepEqualAttributeValues(putItemRequest.items, actual.Item, putItemRequest.ignoreFields); !ok {
+				return err, nil
 			}
 		}
 
-		return nil
+		return nil, putItemRequest.output
 	}
 
-	return fmt.Errorf("Expected PutItemRequest \"%+v\"\nBut Found \"%+v\"", expected, actual)
+	return fmt.Errorf("expected PutItemRequest \"%+v\"\nBut Found \"%+v\"", expected, actual), nil
 }

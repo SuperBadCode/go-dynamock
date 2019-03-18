@@ -1,14 +1,38 @@
 package dynamock
 
+import (
+	"fmt"
+	"sync"
+)
+
 type Dynamock struct {
-	ordered  bool
-	requests []requestExpectation
-	errors []error
+	ordered      bool
+	expectations []*expectation
+	errors       []error
+	lock         sync.Mutex
 }
 
-type requestExpectation interface{}
+type expectation interface{}
 
-type ignoreField interface{}
+func (e *dynamo) matchExpectation(input interface{}, compare func(expectation, interface{}) (error, interface{})) interface{} {
+	e.mock.lock.Lock()
+	for index, request := range e.mock.expectations {
+		if err, output := compare(*request, input); err == nil {
+			e.mock.expectations = append(e.mock.expectations[:index], e.mock.expectations[index+1:]...)
+			return output
+		}
+
+		if !e.mock.ordered {
+			continue
+		} else {
+			e.mock.errors = append(e.mock.errors, fmt.Errorf("expected %+v\n but found %+v", request, input))
+		}
+	}
+
+	e.mock.errors = append(e.mock.errors, fmt.Errorf("unexpected request %+v", input))
+	e.mock.lock.Unlock()
+	return nil
+}
 
 func (d *Dynamock) UnOrderedExpectations(ordered bool) {
 	d.ordered = ordered
